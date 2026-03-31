@@ -1,76 +1,148 @@
-import random
-import threading
-import time
-import tkinter
+import tkinter as tk
+import tkinter.messagebox as tk_msgbox
 
-# ---------------------------- CONSTANTS ------------------------------- #
-PINK = "#e2979c"
-RED = "#e7305b"
-GREEN = "#9bdeac"
-YELLOW = "#f7f5dd"
+# ---------------------------- KONFIGURACJA ---------------------------- #
+COLOR_PINK = "#e2979c"
+COLOR_RED = "#e7305b"
+COLOR_GREEN = "#9bdeac"
+COLOR_YELLOW = "#f7f5dd"
+
 FONT_NAME = "Courier"
-WORK_MIN = 25
-SHORT_BREAK_MIN = 5
-LONG_BREAK_MIN = 20
+
 CANVAS_WIDTH = 500
 CANVAS_HEIGHT = 300
-POMODORO_UNIT = 25*60
 
-# ---------------------------- TIMER RESET ------------------------------- #
+SECONDS_IN_MINUTE = 60
+WORK_DURATION = 25 * SECONDS_IN_MINUTE
+SHORT_BREAK_DURATION = 5 * SECONDS_IN_MINUTE
+LONG_BREAK_DURATION = 20 * SECONDS_IN_MINUTE
 
-# ---------------------------- TIMER MECHANISM ------------------------------- #
-counting_down = False
-reset = False
-score = 0
+POMODORO_STAGES = [
+    ("PRACA", WORK_DURATION),
+    ("KRÓTKA PRZERWA", SHORT_BREAK_DURATION),
+    ("PRACA", WORK_DURATION),
+    ("KRÓTKA PRZERWA", SHORT_BREAK_DURATION),
+    ("PRACA", WORK_DURATION),
+    ("KRÓTKA PRZERWA", SHORT_BREAK_DURATION),
+    ("PRACA", WORK_DURATION),
+    ("DŁUGA PRZERWA", LONG_BREAK_DURATION),
+]
 
+# ---------------------------- STAN APLIKACJI ---------------------------- #
+current_stage_index = 0
+after_job_id = None
+
+
+# ---------------------------- FUNKCJE POMOCNICZE ---------------------------- #
+def update_canvas_text(text_id, value):
+    canvas.itemconfig(text_id, text=value)
+
+
+def format_time(seconds):
+    minutes = seconds // 60
+    remaining_seconds = seconds % 60
+    return f"{minutes:02}:{remaining_seconds:02}"
+
+
+def update_timer_display(seconds):
+    update_canvas_text(timer_text_id, format_time(seconds))
+
+
+def update_status_display(status):
+    update_canvas_text(status_text_id, status)
+
+
+def show_stage_finished_popup():
+    tk_msgbox.showinfo("Pomodoro", "Czas uplynal")
+
+
+def move_to_next_stage():
+    global current_stage_index
+    current_stage_index = (current_stage_index + 1) % len(POMODORO_STAGES)
+
+
+# ---------------------------- OBSŁUGA TIMERA ---------------------------- #
 def start_timer():
-    global counting_down
-    if not counting_down:
-        count_down(POMODORO_UNIT)
-        counting_down = True
+    global after_job_id
+
+    if after_job_id is not None:
+        return
+
+    stage_name, stage_duration = POMODORO_STAGES[current_stage_index]
+    update_status_display(stage_name)
+    countdown(stage_duration)
+
 
 def reset_timer():
-    global reset
-    reset = True
+    global after_job_id, current_stage_index
 
-counting_down = False
+    if after_job_id is not None:
+        window.after_cancel(after_job_id)
+        after_job_id = None
 
-timer = None
-limit = 10
-window = tkinter.Tk()
+    current_stage_index = 0
+    update_status_display("POMODORO")
+    update_timer_display(WORK_DURATION)
 
-# ---------------------------- COUNTDOWN MECHANISM ------------------------------- #
-def count_down(count):
-    global counting_down, reset
-    canvas.itemconfig(timer_txt, text=f"{int(count/60):02}:{count%60:02}")
-    if count > 0 and not reset:
-        window.after(1000, count_down, count-1)
+
+def countdown(seconds_left):
+    global after_job_id
+
+    update_timer_display(seconds_left)
+
+    if seconds_left > 0:
+        after_job_id = window.after(1000, countdown, seconds_left - 1)
     else:
-        counting_down = False
-        reset = False
-        canvas.itemconfig(timer_txt, text=f"{int(POMODORO_UNIT/60):02}:{POMODORO_UNIT%60:02}")
+        after_job_id = None
+        show_stage_finished_popup()
+        move_to_next_stage()
+        start_timer()
 
-# ---------------------------- UI SETUP ------------------------------- #
+
+# ---------------------------- UI ---------------------------- #
+window = tk.Tk()
 window.title("Pomodoro")
-window.config(padx=50, pady=30, bg=YELLOW)
+window.config(padx=50, pady=30, bg=COLOR_YELLOW)
 
-canvas = tkinter.Canvas(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, bg=YELLOW, highlightthickness=0)
-tomato_img = tkinter.PhotoImage(file="tomato.png")
-canvas.create_image(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, image=tomato_img)
-timer_txt = canvas.create_text(CANVAS_WIDTH*5/10, CANVAS_HEIGHT*5.5/10, font=(FONT_NAME, 30, "bold"), text=f"{int(POMODORO_UNIT/60):02}:{POMODORO_UNIT%60:02}", fill="white")
+canvas = tk.Canvas(
+    width=CANVAS_WIDTH,
+    height=CANVAS_HEIGHT,
+    bg=COLOR_YELLOW,
+    highlightthickness=0,
+)
+tomato_image = tk.PhotoImage(file="tomato.png")
+canvas.create_image(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, image=tomato_image)
+
+timer_text_id = canvas.create_text(
+    CANVAS_WIDTH / 2,
+    CANVAS_HEIGHT * 0.55,
+    font=(FONT_NAME, 30, "bold"),
+    text=format_time(WORK_DURATION),
+    fill="white",
+)
+
+status_text_id = canvas.create_text(
+    CANVAS_WIDTH * 0.525,
+    CANVAS_HEIGHT * 0.05,
+    font=(FONT_NAME, 30, "bold"),
+    text="POMODORO",
+    fill=COLOR_PINK,
+)
+
 canvas.grid(column=1, row=0)
 
-start_button = tkinter.Button(text="Start", font=(FONT_NAME, 10, "bold"), command=start_timer)
+start_button = tk.Button(
+    text="Start",
+    font=(FONT_NAME, 10, "bold"),
+    command=start_timer,
+)
 start_button.grid(column=0, row=1)
 
-reset_button = tkinter.Button(text="Reset", font=(FONT_NAME, 10, "bold"), command=reset_timer)
+reset_button = tk.Button(
+    text="Reset",
+    font=(FONT_NAME, 10, "bold"),
+    command=reset_timer,
+)
 reset_button.grid(column=2, row=1)
-
-checkmark_label = tkinter.Label(text="This is old text")
-checkmark_label.config(text="✔", font=(FONT_NAME, 20), fg=GREEN, bg=YELLOW)
-checkmark_label.grid(column=1, row=1)
-
-
-
 
 window.mainloop()
